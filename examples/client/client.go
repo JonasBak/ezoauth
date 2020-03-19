@@ -51,8 +51,8 @@ func init() {
 	config = oauthgorm.OauthGormConfig{
 		OauthConfig: oauthConfig,
 		DB:          db,
-		UserStructMapper: func(data []byte) (map[string]interface{}, string, error) {
-			return map[string]interface{}{"username": "webkom"}, "webkom", nil
+		UserStructMapper: func(data []byte) (interface{}, string, error) {
+			return &User{Username: "webkom"}, "webkom", nil
 		},
 		UserStruct:          User{},
 		UserIdentifierField: "username",

@@ -8,14 +8,13 @@ import (
 	"golang.org/x/oauth2"
 	"io/ioutil"
 	"net/http"
-	"reflect"
 )
 
 var (
 	oauthStateString = "pseudo-random"
 )
 
-type UserStructMapper func(data []byte) (map[string]interface{}, string, error)
+type UserStructMapper func(data []byte) (interface{}, string, error)
 
 type OauthGormConfig struct {
 	OauthConfig oauth2.Config
@@ -66,26 +65,14 @@ func (c OauthGormConfig) getUserInfo(state string, code string) (interface{}, er
 		return nil, fmt.Errorf("failed reading response body: %s", err.Error())
 	}
 
-	// TODO
-	// Map response to userdata
-	attrs, identifier, err := c.UserStructMapper(contents)
+	user, identifier, err := c.UserStructMapper(contents)
 	if err != nil {
 		return nil, fmt.Errorf("failed mapping response to user object: %s", err.Error())
 	}
-	// Check if user exists
-	// If not, create user
-	user := reflect.New(reflect.TypeOf(c.UserStruct))
-	result := c.DB.Debug().Table(c.GormUserTable).Where("? = ?", c.UserIdentifierField, identifier).First(&user)
-	fmt.Printf("%+v\n", user)
-	fmt.Printf("%+v\n", attrs)
-	if result.RecordNotFound() {
-		c.DB.Debug().Table(c.GormUserTable).Create(attrs)
-	} else if result.Error != nil {
+	result := c.DB.Debug().Table(c.GormUserTable).Where(map[string]interface{}{c.UserIdentifierField: identifier}).FirstOrCreate(user)
+	if result.Error != nil {
 		return nil, fmt.Errorf("failed querying database for user: %s", result.Error.Error())
 	}
-	fmt.Printf("%+v\n", user)
-	fmt.Printf("%+v\n", attrs)
 
-	// result := c.DB.Debug().Table(c.GormUserTable).Where(map[string]interface{}{c.UserIdentifierField: identifier}).Attrs(attrs).FirstOrCreate(&user)
 	return user, nil
 }
