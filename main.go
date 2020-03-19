@@ -52,7 +52,6 @@ func (c OauthGormConfig) getUserInfo(state string, code string) (interface{}, er
 	if err != nil {
 		return nil, fmt.Errorf("code exchange failed: %s", err.Error())
 	}
-	// response, err := http.Get("http://127.0.0.1/api/v1/users/oauth2_userdata/")
 	req, _ := http.NewRequest("GET", "http://127.0.0.1:8000/api/v1/users/oauth2_userdata/", nil)
 	req.Header.Add("AUTHORIZATION", "Bearer "+token.AccessToken)
 	response, err := (&http.Client{}).Do(req)
@@ -69,9 +68,13 @@ func (c OauthGormConfig) getUserInfo(state string, code string) (interface{}, er
 	if err != nil {
 		return nil, fmt.Errorf("failed mapping response to user object: %s", err.Error())
 	}
-	result := c.DB.Debug().Table(c.GormUserTable).Where(map[string]interface{}{c.UserIdentifierField: identifier}).FirstOrCreate(user)
-	if result.Error != nil {
-		return nil, fmt.Errorf("failed querying database for user: %s", result.Error.Error())
+	result := c.DB.Table(c.GormUserTable).Where(map[string]interface{}{c.UserIdentifierField: identifier}).Updates(user).First(user)
+	if result.RecordNotFound() {
+		if err := c.DB.Create(user).Error; err != nil {
+			return nil, fmt.Errorf("failed creating user '%s': %s", identifier, err.Error())
+		}
+	} else if result.Error != nil {
+		return nil, fmt.Errorf("failed updating user info for user '%s': %s", identifier, result.Error.Error())
 	}
 
 	return user, nil

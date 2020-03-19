@@ -60,14 +60,9 @@ func init() {
 	}
 }
 
-// TODO
-// For testing and dev:
-// https://github.com/RichardKnop/go-oauth2-server (or maybe alternative, hydra?)
-
 func main() {
 	http.HandleFunc("/", handleMain)
 	http.HandleFunc("/login", config.HandleLogin)
 	http.HandleFunc("/callback", config.HandleCallback)
 	http.ListenAndServe(":8080", nil)
-	fmt.Println("yeet")
 }
