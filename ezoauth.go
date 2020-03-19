@@ -1,4 +1,4 @@
-package oauthgorm
+package ezoauth
 
 import (
 	"fmt"
@@ -16,9 +16,11 @@ var (
 
 type UserStructMapper func(data []byte) (interface{}, string, error)
 
-type OauthGormConfig struct {
-	OauthConfig oauth2.Config
-	DB          *gorm.DB
+type EzOauthConfig struct {
+	DB *gorm.DB
+
+	OauthConfig      oauth2.Config
+	OauthUserDataURL string
 
 	UserStructMapper    UserStructMapper
 	UserStruct          interface{}
@@ -26,13 +28,13 @@ type OauthGormConfig struct {
 	GormUserTable       string
 }
 
-func (c OauthGormConfig) HandleLogin(w http.ResponseWriter, r *http.Request) {
+func (c EzOauthConfig) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	url := c.OauthConfig.AuthCodeURL(oauthStateString)
 	http.Redirect(w, r, url, http.StatusTemporaryRedirect)
 }
 
-func (c OauthGormConfig) HandleCallback(w http.ResponseWriter, r *http.Request) {
-	_, err := c.getUserInfo(r.FormValue("state"), r.FormValue("code"))
+func (c EzOauthConfig) HandleCallback(w http.ResponseWriter, r *http.Request) {
+	user, err := c.getUserInfo(r.FormValue("state"), r.FormValue("code"))
 	if err != nil {
 		fmt.Println(err.Error())
 		http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
@@ -42,22 +44,24 @@ func (c OauthGormConfig) HandleCallback(w http.ResponseWriter, r *http.Request) 
 	// get user from getUserInfo
 	// Create session
 	// Set session token and redirect to /
-	fmt.Fprintf(w, "OK!")
+	fmt.Fprintf(w, "%+v", user)
 }
-func (c OauthGormConfig) getUserInfo(state string, code string) (interface{}, error) {
+func (c EzOauthConfig) getUserInfo(state string, code string) (interface{}, error) {
 	if state != oauthStateString {
 		return nil, fmt.Errorf("invalid oauth state")
 	}
+
 	token, err := c.OauthConfig.Exchange(oauth2.NoContext, code)
 	if err != nil {
 		return nil, fmt.Errorf("code exchange failed: %s", err.Error())
 	}
-	req, _ := http.NewRequest("GET", "http://127.0.0.1:8000/api/v1/users/oauth2_userdata/", nil)
-	req.Header.Add("AUTHORIZATION", "Bearer "+token.AccessToken)
+
+	req, _ := http.NewRequest("GET", fmt.Sprintf("%s?access_token=%s", c.OauthUserDataURL, token.AccessToken), nil)
 	response, err := (&http.Client{}).Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed getting user info: %s", err.Error())
 	}
+
 	defer response.Body.Close()
 	contents, err := ioutil.ReadAll(response.Body)
 	if err != nil {
@@ -68,6 +72,7 @@ func (c OauthGormConfig) getUserInfo(state string, code string) (interface{}, er
 	if err != nil {
 		return nil, fmt.Errorf("failed mapping response to user object: %s", err.Error())
 	}
+
 	result := c.DB.Table(c.GormUserTable).Where(map[string]interface{}{c.UserIdentifierField: identifier}).Updates(user).First(user)
 	if result.RecordNotFound() {
 		if err := c.DB.Create(user).Error; err != nil {

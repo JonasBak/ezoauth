@@ -1,14 +1,14 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
-	"github.com/JonasBak/infrastucture/containers/oauth"
+	"github.com/JonasBak/ezoauth"
 	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/postgres"
 	_ "github.com/jinzhu/gorm/dialects/sqlite"
 	"golang.org/x/oauth2"
 	"net/http"
-	"os"
 )
 
 func handleMain(w http.ResponseWriter, r *http.Request) {
@@ -23,23 +23,24 @@ func handleMain(w http.ResponseWriter, r *http.Request) {
 }
 
 var (
-	config oauthgorm.OauthGormConfig
+	config ezoauth.EzOauthConfig
 )
 
 type User struct {
 	gorm.Model
 	Username string `gorm:"not null;unique"`
+	Email    string
 }
 
 func init() {
 	oauthConfig := oauth2.Config{
 		RedirectURL:  "http://localhost:8080/callback",
-		ClientID:     os.Getenv("CLIENT_ID"),
-		ClientSecret: os.Getenv("CLIENT_SECRET"),
-		Scopes:       []string{"user"},
+		ClientID:     "222222",
+		ClientSecret: "22222222",
+		Scopes:       []string{"all"},
 		Endpoint: oauth2.Endpoint{
-			AuthURL:  "http://127.0.0.1:8000/authorization/oauth2/authorize/",
-			TokenURL: "http://127.0.0.1:8000/authorization/oauth2/token/",
+			AuthURL:  "http://127.0.0.1:9096/authorize",
+			TokenURL: "http://127.0.0.1:9096/token",
 		},
 	}
 	db, err := gorm.Open("sqlite3", "test.db")
@@ -48,11 +49,22 @@ func init() {
 	}
 	db.LogMode(true)
 	db.AutoMigrate(&User{})
-	config = oauthgorm.OauthGormConfig{
-		OauthConfig: oauthConfig,
-		DB:          db,
+	config = ezoauth.EzOauthConfig{
+		DB: db,
+
+		OauthConfig:      oauthConfig,
+		OauthUserDataURL: "http://127.0.0.1:9096/oauth2_userdata",
+
 		UserStructMapper: func(data []byte) (interface{}, string, error) {
-			return &User{Username: "webkom"}, "webkom", nil
+			user := struct {
+				Username string
+				Email    string
+			}{}
+			err := json.Unmarshal(data, &user)
+			if err != nil {
+				return nil, "", err
+			}
+			return &User{Username: user.Username, Email: user.Email}, user.Username, nil
 		},
 		UserStruct:          User{},
 		UserIdentifierField: "username",
