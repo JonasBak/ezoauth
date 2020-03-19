@@ -1,6 +1,7 @@
 package ezoauth
 
 import (
+	"crypto/rand"
 	"fmt"
 	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/postgres"
@@ -11,10 +12,31 @@ import (
 )
 
 var (
-	oauthStateString = "pseudo-random"
+	oauthStateString  = "pseudo-random"
+	sessionCookieName = "session"
 )
 
-type UserStructMapper func(data []byte) (interface{}, string, error)
+type UserInterface interface {
+	ObjID() uint
+}
+
+type BaseUser struct {
+	gorm.Model
+
+	Sessions []Session `gorm:"foreignkey:UserID"`
+}
+
+func (u BaseUser) ObjID() uint {
+	return u.Model.ID
+}
+
+type Session struct {
+	gorm.Model
+	UserID uint   `gorm:"not null"`
+	Value  string `gorm:"not null;unique"`
+}
+
+type UserStructMapper func(data []byte) (UserInterface, string, error)
 
 type EzOauthConfig struct {
 	DB *gorm.DB
@@ -23,30 +45,21 @@ type EzOauthConfig struct {
 	OauthUserDataURL string
 
 	UserStructMapper    UserStructMapper
-	UserStruct          interface{}
+	UserStruct          UserInterface
 	UserIdentifierField string
 	GormUserTable       string
 }
 
-func (c EzOauthConfig) HandleLogin(w http.ResponseWriter, r *http.Request) {
-	url := c.OauthConfig.AuthCodeURL(oauthStateString)
-	http.Redirect(w, r, url, http.StatusTemporaryRedirect)
+func (c EzOauthConfig) newSession(user UserInterface) Session {
+	b := make([]byte, 32)
+	rand.Read(b)
+	value := fmt.Sprintf("%x", b)
+	s := Session{UserID: user.ObjID(), Value: value}
+	c.DB.Create(&s)
+	return s
 }
 
-func (c EzOauthConfig) HandleCallback(w http.ResponseWriter, r *http.Request) {
-	user, err := c.getUserInfo(r.FormValue("state"), r.FormValue("code"))
-	if err != nil {
-		fmt.Println(err.Error())
-		http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
-		return
-	}
-	// TODO
-	// get user from getUserInfo
-	// Create session
-	// Set session token and redirect to /
-	fmt.Fprintf(w, "%+v", user)
-}
-func (c EzOauthConfig) getUserInfo(state string, code string) (interface{}, error) {
+func (c EzOauthConfig) getUserInfo(state string, code string) (UserInterface, error) {
 	if state != oauthStateString {
 		return nil, fmt.Errorf("invalid oauth state")
 	}

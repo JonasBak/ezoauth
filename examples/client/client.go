@@ -11,15 +11,28 @@ import (
 	"net/http"
 )
 
-func handleMain(w http.ResponseWriter, r *http.Request) {
-	// TODO
-	// Middleware checks session token, sets user in context
-	var htmlIndex = `<html>
+func handleMainNotAuthorized() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var htmlIndex = `<html>
 <body>
-	<a href="/login"> Log In</a>
+	<a href="/login">Log In</a>
 </body>
 </html>`
-	fmt.Fprintf(w, htmlIndex)
+		fmt.Fprintf(w, htmlIndex)
+	})
+}
+
+func handleMainAuthorized() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user := r.Context().Value("user").(*User)
+		var htmlIndex = `<html>
+<body>
+	Logged in as %s!
+	<a href="/logout">Log out</a>
+</body>
+</html>`
+		fmt.Fprintf(w, htmlIndex, user.Username)
+	})
 }
 
 var (
@@ -27,7 +40,7 @@ var (
 )
 
 type User struct {
-	gorm.Model
+	ezoauth.BaseUser
 	Username string `gorm:"not null;unique"`
 	Email    string
 }
@@ -48,14 +61,14 @@ func init() {
 		panic("failed to connect database")
 	}
 	db.LogMode(true)
-	db.AutoMigrate(&User{})
+	db.AutoMigrate(&User{}, &ezoauth.Session{})
 	config = ezoauth.EzOauthConfig{
 		DB: db,
 
 		OauthConfig:      oauthConfig,
 		OauthUserDataURL: "http://127.0.0.1:9096/oauth2_userdata",
 
-		UserStructMapper: func(data []byte) (interface{}, string, error) {
+		UserStructMapper: func(data []byte) (ezoauth.UserInterface, string, error) {
 			user := struct {
 				Username string
 				Email    string
@@ -66,15 +79,16 @@ func init() {
 			}
 			return &User{Username: user.Username, Email: user.Email}, user.Username, nil
 		},
-		UserStruct:          User{},
+		UserStruct:          &User{},
 		UserIdentifierField: "username",
 		GormUserTable:       "users",
 	}
 }
 
 func main() {
-	http.HandleFunc("/", handleMain)
+	http.Handle("/", config.AuthMuxMiddleware(handleMainAuthorized(), handleMainNotAuthorized()))
 	http.HandleFunc("/login", config.HandleLogin)
+	http.HandleFunc("/logout", config.HandleLogout)
 	http.HandleFunc("/callback", config.HandleCallback)
 	http.ListenAndServe(":8080", nil)
 }
