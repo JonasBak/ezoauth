@@ -13,11 +13,11 @@ func (c EzOauthConfig) AuthMuxMiddleware(success, fail http.Handler) http.Handle
 			value = cookie.Value
 		}
 		s := Session{}
-		if c.DB.Where("value = ?", value).First(&s).RecordNotFound() {
+		if value == "" || c.DB.Where("value = ?", value).First(&s).RecordNotFound() {
 			fail.ServeHTTP(w, r)
 			return
 		}
-		user := reflect.New(reflect.ValueOf(c.UserStruct).Elem().Type()).Interface()
+		user := reflect.New(reflect.TypeOf(c.UserStruct)).Elem().Addr().Interface()
 		c.DB.Table(c.GormUserTable).Where("id = ?", s.UserID).First(user)
 		ctx := context.WithValue(r.Context(), "user", user)
 		success.ServeHTTP(w, r.WithContext(ctx))
