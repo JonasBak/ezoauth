@@ -20,7 +20,7 @@ func MutateRequestBearerHeader(req *http.Request, token string) *http.Request {
 	return req
 }
 
-func TagMapper(userStruct UserInterface, identifier string) UserStructMapper {
+func TagMapper(userStruct interface{}, identifier string) UserStructMapper {
 	v := reflect.TypeOf(userStruct)
 	fields := []reflect.StructField{}
 	for i := 0; i < v.NumField(); i++ {
@@ -33,7 +33,7 @@ func TagMapper(userStruct UserInterface, identifier string) UserStructMapper {
 		}
 	}
 	typ := reflect.StructOf(fields)
-	return func(data []byte) (UserInterface, string, error) {
+	return func(data []byte) (interface{}, string, error) {
 		u := reflect.New(typ).Elem()
 		err := json.Unmarshal(data, u.Addr().Interface())
 		if err != nil {
@@ -51,6 +51,6 @@ func TagMapper(userStruct UserInterface, identifier string) UserStructMapper {
 				user.FieldByName(fn).SetString(u.FieldByName(fn).String())
 			}
 		}
-		return user.Addr().Interface().(UserInterface), user.FieldByName(identifier).String(), nil
+		return user.Addr().Interface(), user.FieldByName(identifier).String(), nil
 	}
 }

@@ -14,10 +14,6 @@ var (
 	sessionCookieName = "session"
 )
 
-type UserInterface interface {
-	ObjID() uint
-}
-
 type MutateRequestFunction func(*http.Request, string) *http.Request
 
 type BaseUser struct {
@@ -26,17 +22,13 @@ type BaseUser struct {
 	Sessions []Session `gorm:"foreignkey:UserID"`
 }
 
-func (u BaseUser) ObjID() uint {
-	return u.Model.ID
-}
-
 type Session struct {
 	gorm.Model
 	UserID uint   `gorm:"not null"`
 	Value  string `gorm:"not null;unique"`
 }
 
-type UserStructMapper func(data []byte) (UserInterface, string, error)
+type UserStructMapper func(data []byte) (interface{}, string, error)
 
 type EzOauthConfig struct {
 	DB *gorm.DB
@@ -47,21 +39,21 @@ type EzOauthConfig struct {
 	MutateRequestFunction MutateRequestFunction
 
 	UserStructMapper    UserStructMapper
-	UserStruct          UserInterface
+	UserStruct          interface{}
 	UserIdentifierField string
 	GormUserTable       string
 }
 
-func (c EzOauthConfig) newSession(user UserInterface) Session {
+func (c EzOauthConfig) newSession(user interface{}) Session {
 	b := make([]byte, 32)
 	rand.Read(b)
 	value := fmt.Sprintf("%x", b)
-	s := Session{UserID: user.ObjID(), Value: value}
+	s := Session{UserID: getID(user), Value: value}
 	c.DB.Create(&s)
 	return s
 }
 
-func (c EzOauthConfig) getUserInfo(state string, code string) (UserInterface, error) {
+func (c EzOauthConfig) getUserInfo(state string, code string) (interface{}, error) {
 	if state != oauthStateString {
 		return nil, fmt.Errorf("invalid oauth state")
 	}

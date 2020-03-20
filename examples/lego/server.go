@@ -77,7 +77,7 @@ func init() {
 
 		MutateRequestFunction: ezoauth.MutateRequestBearerHeader,
 
-		UserStructMapper: func(data []byte) (ezoauth.UserInterface, string, error) {
+		UserStructMapper: func(data []byte) (interface{}, string, error) {
 			fmt.Println(string(data))
 			user := struct {
 				Username       string
