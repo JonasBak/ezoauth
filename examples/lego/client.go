@@ -8,6 +8,7 @@ import (
 	_ "github.com/jinzhu/gorm/dialects/sqlite"
 	"golang.org/x/oauth2"
 	"net/http"
+	"os"
 )
 
 func handleMainNotAuthorized() http.Handler {
@@ -26,11 +27,14 @@ func handleMainAuthorized() http.Handler {
 		user := r.Context().Value("user").(*User)
 		var htmlIndex = `<html>
 <body>
+  <p>
+  <img src="%s" width="40px" height="40px"/>
 	Logged in as %s!
+  </p>
 	<a href="/logout">Log out</a>
 </body>
 </html>`
-		fmt.Fprintf(w, htmlIndex, user.Username)
+		fmt.Fprintf(w, htmlIndex, user.ProfilePicture, user.Username)
 	})
 }
 
@@ -41,18 +45,22 @@ var (
 type User struct {
 	ezoauth.BaseUser
 	Username string `gorm:"not null;unique"`
-	Email    string
+	Email    string `gorm:"not null"`
+
+	ProfilePicture string
+
+	Admin bool `gorm:"not null;default:false"`
 }
 
 func init() {
 	oauthConfig := oauth2.Config{
 		RedirectURL:  "http://localhost:8080/callback",
-		ClientID:     "222222",
-		ClientSecret: "22222222",
-		Scopes:       []string{"all"},
+		ClientID:     os.Getenv("CLIENT_ID"),
+		ClientSecret: os.Getenv("CLIENT_SECRET"),
+		Scopes:       []string{"user"},
 		Endpoint: oauth2.Endpoint{
-			AuthURL:  "http://127.0.0.1:9096/authorize",
-			TokenURL: "http://127.0.0.1:9096/token",
+			AuthURL:  "http://127.0.0.1:8000/authorization/oauth2/authorize/",
+			TokenURL: "http://127.0.0.1:8000/authorization/oauth2/token/",
 		},
 	}
 	db, err := gorm.Open("sqlite3", "test.db")
@@ -65,20 +73,31 @@ func init() {
 		DB: db,
 
 		OauthConfig:      oauthConfig,
-		OauthUserDataURL: "http://127.0.0.1:9096/oauth2_userdata",
+		OauthUserDataURL: "http://127.0.0.1:8000/api/v1/users/oauth2_userdata/",
 
-		MutateRequestFunction: ezoauth.MutateRequestQueryParameter,
+		MutateRequestFunction: ezoauth.MutateRequestBearerHeader,
 
 		UserStructMapper: func(data []byte) (ezoauth.UserInterface, string, error) {
+			fmt.Println(string(data))
 			user := struct {
-				Username string
-				Email    string
+				Username       string
+				Email          string
+				ProfilePicture string
+				AbakusGroups   []struct {
+					Name string
+				}
 			}{}
 			err := json.Unmarshal(data, &user)
 			if err != nil {
 				return nil, "", err
 			}
-			return &User{Username: user.Username, Email: user.Email}, user.Username, nil
+			isAdmin := false
+			for i := range user.AbakusGroups {
+				if user.AbakusGroups[i].Name == "Webkom" {
+					isAdmin = true
+				}
+			}
+			return &User{Username: user.Username, Email: user.Email, ProfilePicture: user.ProfilePicture, Admin: isAdmin}, user.Username, nil
 		},
 		UserStruct:          &User{},
 		UserIdentifierField: "username",

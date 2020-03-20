@@ -4,8 +4,6 @@ import (
 	"crypto/rand"
 	"fmt"
 	"github.com/jinzhu/gorm"
-	_ "github.com/jinzhu/gorm/dialects/postgres"
-	_ "github.com/jinzhu/gorm/dialects/sqlite"
 	"golang.org/x/oauth2"
 	"io/ioutil"
 	"net/http"
@@ -19,6 +17,8 @@ var (
 type UserInterface interface {
 	ObjID() uint
 }
+
+type MutateRequestFunction func(*http.Request, string) *http.Request
 
 type BaseUser struct {
 	gorm.Model
@@ -43,6 +43,8 @@ type EzOauthConfig struct {
 
 	OauthConfig      oauth2.Config
 	OauthUserDataURL string
+
+	MutateRequestFunction MutateRequestFunction
 
 	UserStructMapper    UserStructMapper
 	UserStruct          UserInterface
@@ -69,7 +71,8 @@ func (c EzOauthConfig) getUserInfo(state string, code string) (UserInterface, er
 		return nil, fmt.Errorf("code exchange failed: %s", err.Error())
 	}
 
-	req, _ := http.NewRequest("GET", fmt.Sprintf("%s?access_token=%s", c.OauthUserDataURL, token.AccessToken), nil)
+	req, _ := http.NewRequest("GET", c.OauthUserDataURL, nil)
+	req = c.MutateRequestFunction(req, token.AccessToken)
 	response, err := (&http.Client{}).Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed getting user info: %s", err.Error())

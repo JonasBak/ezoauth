@@ -20,8 +20,9 @@ func (c EzOauthConfig) HandleLogout(w http.ResponseWriter, r *http.Request) {
 	if !c.DB.Where("value = ?", value).First(&s).RecordNotFound() {
 		c.DB.Delete(&s)
 		cookie := http.Cookie{
-			Name:  sessionCookieName,
-			Value: "",
+			Name:    sessionCookieName,
+			Value:   "",
+			Expires: time.Now(),
 		}
 		http.SetCookie(w, &cookie)
 	}
